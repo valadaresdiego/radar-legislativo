@@ -1,5 +1,5 @@
 # Radar Legislativo
-O projeto será dividido em 4 grandes etapas:
+O projeto será dividido em 5 grandes etapas:
 1. Exploração da API
 2. Extração com Python
 3. Transformação com Pandas e carga no PostgreSQL
