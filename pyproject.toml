@@ -5,9 +5,12 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "argparse>=1.4.0",
     "datetime>=6.0",
     "jupyter>=1.1.1",
+    "logging>=0.4.9.6",
     "pandas>=3.0.3",
+    "pathlib>=1.0.1",
     "python-dotenv>=1.2.2",
     "requests>=2.34.2",
 ]
