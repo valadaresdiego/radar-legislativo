@@ -84,7 +84,8 @@ def get_com_retry(url: str, params: dict, max_tentativas: int = 3) -> dict:
 
                 # Erro do servidor (5xx) — pode ser temporário, vale retry
                 if resp.status_code >= 500:
-                     raise requests.exceptions.ConnectionError(f"Servidor retornou {resp.status_code}")
+                     raise requests.exceptions.ConnectionError(
+                          f"Servidor retornou {resp.status_code}")
                 return resp.json()
             
             except (requests.exceptions.Timeout,
@@ -148,6 +149,26 @@ def paginar(path: str, params_extras: dict = {}) -> list[dict]:
         pagina += 1
         time.sleep(SLEEP_ENTRE_CHAMADAS)
     return todos
+#%%
+#Auditoria: adiciona data_extração em cada registro
+def adicionar_data_extracao(dados: list[dict]) -> list[dict]:
+    """
+    Enriquece cada registro com o campo 'data_extracao' (ISO 8601).
+
+    Por que no cliente e não no transform?
+        Porque queremos registrar QUANDO o dado foi capturado da API,
+        não quando foi processado. Se reprocessarmos o JSON amanhã,
+        a data_extracao continua sendo a do momento da extração.
+
+    Exemplo:
+        {"id": 1, "sigla": "PT", ...}
+        → {"id": 1, "sigla": "PT", ..., "data_extracao": "2025-04-01T06:32:11"}
+    """
+    
+    agora = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+    return [{**registro, "data_extracao": agora} for registro in dados]
+
+
 # %%
 #Salvamento do JSON bruto
 def salvar_raw(endpoint: str, dados: list[dict]) -> Path:
