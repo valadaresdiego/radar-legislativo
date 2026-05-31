@@ -11,3 +11,7 @@ wheels/
 
 #Credenciais
 .env
+
+#pastas raw
+data/raw/
+data/processed/

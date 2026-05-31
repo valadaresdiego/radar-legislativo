@@ -370,7 +370,8 @@ def main():
 
     if args.endpoint in ("deputados", "tudo"):
         deputados = extrair_deputados()
-        if args.com_detalhes:
+    
+    if args.com_detalhes:
             extrair_deputados_detalhes(deputados)
             log.info("✅ Deputados extraídos: %d registros", len(deputados))
 
@@ -380,7 +381,8 @@ def main():
 
     if args.endpoint in ("votacoes", "tudo"):
         votacoes = extrair_votacoes(data_inicio, data_fim)
-        if args.com_votos:
+    
+    if args.com_votos:
             extrair_votos(votacoes)
 
     log.info("=" * 50)
