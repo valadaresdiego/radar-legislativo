@@ -127,6 +127,30 @@ def selecionar_colunas(df: pd.DataFrame, mapa: dict[str: str], tabela: str) -> p
     
     return pd.DataFrame(resultado, index= df.index)
 
+def garantir_data_extracao(df: pd.DataFrame, tabela: str) -> pd.DataFrame:
+    """
+    Garante que a coluna data_extracao existe no DataFrame.
+ 
+    Por que isso é necessário?
+        O campo é adicionado pelo camara_client.salvar_raw() no momento
+        da extração. Se os JSONs foram gerados por uma versão anterior
+        do camara_client (sem a função adicionar_data_extracao), o campo
+        não existe no arquivo em disco.
+ 
+    Fallback: usa o timestamp atual como aproximação.
+    Solução definitiva: re-rodar a extração com o camara_client atualizado.
+    """
+    from datetime import datetime
+ 
+    if "data_extracao" not in df.columns or df["data_extracao"].isna().all():
+        agora = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+        df["data_extracao"] = agora
+        log.warning(
+            "[%s] 'data_extracao' ausente no raw — usando timestamp atual (%s). "
+            "Re-rode a extração para corrigir definitivamente.",
+            tabela, agora
+        )
+    return df
 
 def salvar_processado(tabela: str, df: pd.DataFrame) -> Path:
     """
@@ -369,6 +393,7 @@ def transformar_partidos() -> tuple[pd.DataFrame, dict]:
     df   = pd.json_normalize(raw)
     df   = normalizar_colunas(df)
     df   = selecionar_colunas(df, MAPA, TABELA)
+    df = garantir_data_extracao(df, TABELA)
 
     return executar_validacoes(
         df,
@@ -425,7 +450,8 @@ def transformar_deputados() -> tuple[pd.DataFrame, dict]:
     df  = pd.json_normalize(raw)
     df  = normalizar_colunas(df)
     df  = selecionar_colunas(df, MAPA, TABELA)
-
+    df = garantir_data_extracao(df, TABELA)
+    
     return executar_validacoes(
         df,
         tabela=TABELA,
@@ -482,6 +508,7 @@ def transformar_proposicoes() -> tuple[pd.DataFrame, dict]:
     df  = pd.json_normalize(raw)
     df  = normalizar_colunas(df)
     df  = selecionar_colunas(df, MAPA, TABELA)
+    df = garantir_data_extracao(df, TABELA)
 
     # Colunas da IA — existem no modelo mas ainda não têm valor
     # A Etapa 4 vai fazer UPDATE nessas colunas
@@ -500,53 +527,85 @@ def transformar_proposicoes() -> tuple[pd.DataFrame, dict]:
 def transformar_votacoes() -> tuple[pd.DataFrame, dict]:
     """
     Transforma o JSON bruto de /votacoes.
-
+ 
     Modelo de destino:
-        id            TEXT  PK   (a API retorna strings, não ints)
-        id_proposicao INT   FK → proposicoes.id
+        id            TEXT  PK   (formato "2598708-7" — string da API)
+        id_proposicao INT        FK lógica → proposicoes.id
         data          DATE
         descricao     TEXT
         aprovada      BOOL
         data_extracao TIMESTAMP
-
-    Atenção ao campo id_proposicao:
-        A API retorna um objeto aninhado 'proposicao_' com o id dentro.
-        Após json_normalize + normalizar_colunas():
-            proposicao_.id → proposicao_id
-        Mapeamos proposicao_id → id_proposicao para seguir a convenção FK.
-
-    Atenção ao campo aprovada:
-        A API retorna 'aprovacao' como int (1/0). Convertemos para bool.
+ 
+    Sobre id_proposicao:
+        A API NÃO retorna o id da proposição como campo direto nem como
+        objeto aninhado. Ele vem embutido em 'uriProposicaoObjeto':
+ 
+            "uriProposicaoObjeto": ".../proposicoes/2598708"
+                                                    ↑ extraímos com regex
+ 
+        Votações sem proposição vinculada têm uriProposicaoObjeto = null
+        → id_proposicao fica como NA (aceitável, não é campo obrigatório).
+ 
+    Sobre proposicaoObjeto:
+        É uma string legível ("MPV 1329/2025"), não um objeto.
+        Não usamos — o id extraído da URI é o que importa para o JOIN.
     """
     TABELA = "votacoes"
-
-    # Após normalizar_colunas():
-    #   proposicao_.id → proposicao_id (renomeamos para id_proposicao — convenção FK)
-    #   aprovacao      → aprovacao     (renomeamos para aprovada)
-    MAPA = {
-        "id":            "id",
-        "proposicao_id": "id_proposicao",   # campo aninhado achatado
-        "data":          "data",
-        "descricao":     "descricao",
-        "aprovacao":     "aprovada",
-        "data_extracao": "data_extracao",
-    }
-
+ 
     TIPOS = {
         "id_proposicao": "int",
         "data":          "datetime",
         "descricao":     "str",
     }
-
+ 
     raw = carregar_raw_mais_recente(TABELA)
     df  = pd.json_normalize(raw)
     df  = normalizar_colunas(df)
-    df  = selecionar_colunas(df, MAPA, TABELA)
+ 
+    # ------------------------------------------------------------------
+    # Extrai id_proposicao do final da URI
+    # ".../proposicoes/2598708" → 2598708
+    # null → <NA>  (Int64 suporta valores ausentes)
+    # ------------------------------------------------------------------
+    if "uri_proposicao_objeto" in df.columns:
+        df["id_proposicao"] = (
+            df["uri_proposicao_objeto"]
+            .str.extract(r"/proposicoes/(\d+)$")[0]
+            .astype("Int64")
+        )
+        log.info("[%s] id_proposicao extraído de 'uri_proposicao_objeto'", TABELA)
+    else:
+        log.warning(
+            "[%s] 'uri_proposicao_objeto' não encontrada — id_proposicao será None. "
+            "Colunas disponíveis: %s", TABELA, df.columns.tolist()
+        )
+        df["id_proposicao"] = None
+ 
+    # ------------------------------------------------------------------
+    # Garante data_extracao mesmo em JSONs gerados por versão antiga
+    # ------------------------------------------------------------------
+    df = garantir_data_extracao(df, TABELA)
+ 
+    # ------------------------------------------------------------------
+    # Seleciona apenas as colunas do modelo, na ordem correta
+    # ------------------------------------------------------------------
+    MAPA = {
+        "id":            "id",
+        "id_proposicao": "id_proposicao",   # já calculado acima
+        "data":          "data",
+        "descricao":     "descricao",
+        "aprovacao":     "aprovada",
+        "data_extracao": "data_extracao",
+    }
+ 
+    df = selecionar_colunas(df, MAPA, TABELA)
+    df = garantir_data_extracao(df, TABELA)
 
-    # Converte aprovada: 1/0 → True/False
     if "aprovada" in df.columns:
-        df["aprovada"] = df["aprovada"].map({1: True, 0: False, "1": True, "0": False})
-
+        df["aprovada"] = df["aprovada"].map(
+            {1: True, 0: False, "1": True, "0": False}
+        )
+ 
     return executar_validacoes(
         df,
         tabela=TABELA,
@@ -554,6 +613,7 @@ def transformar_votacoes() -> tuple[pd.DataFrame, dict]:
         specs_tipos=TIPOS,
         coluna_dedup="id",
     )
+ 
 
 
 
@@ -597,7 +657,8 @@ def transformar_votos() -> tuple[pd.DataFrame, dict]:
     df  = pd.json_normalize(raw)
     df  = normalizar_colunas(df)
     df  = selecionar_colunas(df, MAPA, TABELA)
-
+    df = garantir_data_extracao(df, TABELA)
+    
     # Para votos, a chave composta (id_votacao + id_deputado) é o identificador único
     # Criamos uma coluna auxiliar para a deduplicação
     df["_chave_dedup"] = df["id_votacao"].astype(str) + "_" + df["id_deputado"].astype(str)
@@ -695,3 +756,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

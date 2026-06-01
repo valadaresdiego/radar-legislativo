@@ -12,6 +12,9 @@ wheels/
 #Credenciais
 .env
 
+#uv.lock
+
+
 #pastas raw
 data/raw/
 data/processed/

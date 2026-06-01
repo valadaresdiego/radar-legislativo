@@ -170,6 +170,13 @@ def adicionar_data_extracao(dados: list[dict]) -> list[dict]:
 
 
 # %%
+
+#Adicionar data_extracao no JSON
+def adicionar_data_extracao(dados: list[dict]) -> list[dict]:
+    agora = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+    return [{**registro, "data_extracao": agora} for registro in dados]
+
+
 #Salvamento do JSON bruto
 def salvar_raw(endpoint: str, dados: list[dict]) -> Path:
     """
@@ -189,13 +196,14 @@ def salvar_raw(endpoint: str, dados: list[dict]) -> Path:
     -------
     Path : caminho completo do arquivo salvo
     """ 
+    dados_com_auditoria = adicionar_data_extracao(dados)
 
     hoje = datetime.today().strftime("%Y-%m-%d")
     nome = f"{endpoint}_{hoje}.json"
     caminho = RAW_DIR / nome 
 
     with open(caminho, "w", encoding="utf-8") as f:
-         json.dump(dados, f, ensure_ascii=False, indent=2)
+         json.dump(dados_com_auditoria, f, ensure_ascii=False, indent=2)
 
     log.info("JSON bruto salvo em: %s (%d registros)", caminho, len(dados))
     return caminho 
