@@ -69,14 +69,6 @@ from transform import (
 def criar_engine():
     """
     Cria o engine SQLAlchemy a partir da variável SUPABASE_DB_URL do .env.
-
-    Formato esperado no .env:
-        SUPABASE_DB_URL=postgresql+psycopg2://postgres.[ref]:[senha]@[host]:5432/postgres
-
-    Onde encontrar no Supabase:
-        Settings → Database → Connection string → URI
-        Troque [YOUR-PASSWORD] pela senha do projeto.
-
     pool_pre_ping=True:
         Testa a conexão antes de usar — evita erros silenciosos
         quando a conexão do pool expirou.
