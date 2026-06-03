@@ -43,11 +43,12 @@ if str(SRC_DIR) not in sys.path:
 
 load_dotenv()
 
+
 #%%
 #CONFIGURAÇÃO
 
-MODEL_NAME = "BAAI/bge-m3"
-#MODEL_NAME = "intfloat/multilingual-e5-large" segunda opção, tem as mesmas dimensões do bge-m3, não necessita alterar o migration_ai_columns
+#MODEL_NAME = "BAAI/bge-m3"
+MODEL_NAME = "intfloat/multilingual-e5-large" #segunda opção, tem as mesmas dimensões do bge-m3, não necessita alterar o migration_ai_columns
 # Temas da consultoria
 # Esses são os rótulos que o modelo vai usar para classificar.
 
@@ -67,7 +68,7 @@ TEMAS = [
 ]
 # Tamanho do lote para encoding — ajuste conforme RAM disponível
 # CPU: 16-32 é seguro. GPU: pode aumentar para 64-128.
-BATCH_SIZE = 64
+BATCH_SIZE = 64 if torch.cuda.is_available() else 16
 
 #%%
 #EMBEDDINGS
@@ -85,14 +86,20 @@ def carregar_modelo() -> SentenceTransformer:
         - Sem custo de API — roda localmente
         - Boa separação semântica entre temas legislativos
     """
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    log.info("Carregando modelo: %s | device: %s", MODEL_NAME, device)
+    DEVICE = "cuda" if torch.cuda.is_available() else "cpu" # Detecta GPU automaticamente — cai para CPU se não encontrar
+
+    log.info("Carregando modelo: %s | device: %s", MODEL_NAME, DEVICE)
     log.info("(Primeira execução faz download de ~560MB do HuggingFace - aguarde)")
+    if DEVICE == "cuda":
+        log.info(
+            "GPU: %s | VRAM: %.1f GB",
+            torch.cuda.get_device_name(0),
+            torch.cuda.get_device_properties(0).total_memory / 1e9,
+        )
+    model = SentenceTransformer(MODEL_NAME, device=DEVICE)
 
-    model = SentenceTransformer(MODEL_NAME)
-
-    log.info("Modelo carregado. Dimensão dos embeddings: %d | Device: %s", 
-             model.get_sentence_embedding_dimension(), device)
+    log.info("Modelo carregado. Dimensão dos embeddings: %d | device: %s", 
+             model.get_sentence_embedding_dimension(), DEVICE)
     return model 
 
 def gerar_embeddings_temas(model: SentenceTransformer) -> np.ndarray:
